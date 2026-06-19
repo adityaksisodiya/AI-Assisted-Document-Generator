@@ -1,0 +1,369 @@
+{
+  "templates": [
+    {
+      "id": "t-1",
+      "name": "Standard Quotation",
+      "title": "Business Quotation",
+      "description": "Professional B2B quotation template.",
+      "customization": {
+        "font": "Cambria",
+        "size": 12,
+        "header": "CONFIDENTIAL",
+        "footer": "Page [PAGE] of [TOTAL]"
+      },
+      "sections": [
+        {
+          "id": "s-1",
+          "heading": "Executive Summary",
+          "type": "AI Generated",
+          "content": "",
+          "prompt": "Write a high-level executive summary."
+        },
+        {
+          "id": "s-2",
+          "heading": "Terms and Conditions",
+          "type": "Text",
+          "content": "### 1. Validity\nValid for 30 days.",
+          "prompt": ""
+        }
+      ]
+    },
+    {
+      "id": "858e337e-2a0f-4a7d-9cd6-3d0b2a5d3800",
+      "name": "Demo",
+      "title": "Demo123",
+      "description": "Demo123456",
+      "customization": {
+        "font": "Times New Roman",
+        "size": "26",
+        "header": "Header text",
+        "footer": "Footer text",
+        "marginTop": 72,
+        "marginBottom": 72,
+        "marginLeft": 72,
+        "marginRight": 72,
+        "bgColor": "#ffffff",
+        "textColor": "#000000"
+      },
+      "sections": [
+        {
+          "id": "7130b164-d798-4a21-a7d4-03da80a52475",
+          "heading": "AI",
+          "type": "AI",
+          "prompt": "generate best executive summary in 10 line paragraph then in table write some statistic data 3 rows and 4 columns then write 2 lines in bold which will be punchline ",
+          "content": ""
+        },
+        {
+          "id": "be32bf84-fb06-45a1-a748-b85ce34800b3",
+          "heading": "New Section",
+          "type": "Text",
+          "prompt": "",
+          "content": "sdalfjadsl;fjsadlfjsadl;kjf ssafhlsdfn hdflasjdflj ;lasdjfl;ksadjf;lsdjf;lsdjf;lsdjfl;ksdjfjl;shdfgldhehrouqihrpoehfgputh pohophposdfg;lkafnqwehtjnm"
+        }
+      ],
+      "date": "2026-06-08T04:13:17.339Z"
+    }
+  ],
+  "documents": [
+    {
+      "id": "128139f4-6113-4e06-9c86-57e595534fba",
+      "title": "asdfasfsafdasfdadfsad",
+      "templateId": "858e337e-2a0f-4a7d-9cd6-3d0b2a5d3800",
+      "templateName": "fdg",
+      "customization": {
+        "font": "Times New Roman",
+        "size": "3",
+        "header": "",
+        "footer": ""
+      },
+      "date": "6/8/2026",
+      "updatedAt": "6/9/2026",
+      "sections": [
+        {
+          "id": "7130b164-d798-4a21-a7d4-03da80a52475",
+          "heading": "AI",
+          "type": "AI",
+          "prompt": "generate best executive summary in 10 line paragraph then in table write some statistic data 3 rows and 4 columns then write 2 lines in bold which will be punchline ",
+          "content": "# AI\n\nAI stands as a pivotal technological frontier, fundamentally transforming how enterprises manage and derive value from their vast document ecosystems. It offers sophisticated analysis, intelligent classification, and predictive insights, moving far beyond traditional automation capabilities. Organizations strategically leverage AI to significantly accelerate information retrieval, refine critical decision-making processes, and personalize customer engagements with unparalleled precision and scale. This technological shift empowers employees by automating repetitive, high-volume document workflows, thereby drastically boosting operational efficiency and minimizing human error rates across departments. Furthermore, AI's inherent continuous learning models ensure that these systems perpetually adapt and improve, consistently keeping pace with evolving business needs and dynamic market shifts. Embracing AI is no longer a mere option but a critical strategic imperative for maintaining a robust competitive advantage and fostering sustainable innovation within an increasingly data-driven global landscape. It effectively unlocks entirely new avenues for revenue generation, optimizes complex resource allocation, and provides a deeper, more granular understanding of intricate business operations. AI integration enables proactive risk mitigation and strengthens regulatory compliance through intelligent monitoring and reporting capabilities. This comprehensive application future-proofs operational frameworks, ensuring adaptability and continuous improvement in the face of evolving market demands. Ultimately, AI transforms raw organizational information into an invaluable strategic asset, consistently driving superior business outcomes and significantly enhancing enterprise resilience.\n\n| Metric                        | Manual Process | With AI      | Improvement  |\n| :---------------------------- | :------------- | :----------- | :----------- |\n| Document Processing Time      | 15 min/document | 30 sec/document | 96% Faster   |\n| Data Extraction Accuracy      | 85%            | 99.5%        | +14.5%       |\n| Operational Cost Reduction    | Baseline       | Up to 40%    | Significant  |\n\n**AI is not just a tool; it's the intelligence layer that defines future enterprise agility.**\n**Embrace AI, or be outpaced by those who do.**"
+        },
+        {
+          "id": "be32bf84-fb06-45a1-a748-b85ce34800b3",
+          "heading": "New Section",
+          "type": "Text",
+          "prompt": "",
+          "content": "asfdsdafsdfsfadfassfdfasfdsffdfassdf sadasfbadfga rnag adg ag ga fgasga"
+        }
+      ]
+    },
+    {
+      "id": "6f253cda-3622-431c-a4cb-d6afeb2275a0",
+      "title": "Business Quotation",
+      "templateId": "t-1",
+      "templateName": "Standard Quotation",
+      "customization": {
+        "font": "Cambria",
+        "size": 12,
+        "header": "CONFIDENTIAL",
+        "footer": "Page [PAGE] of [TOTAL]"
+      },
+      "date": "6/7/2026",
+      "sections": [
+        {
+          "id": "s-2",
+          "heading": "Terms and Conditions",
+          "type": "Text",
+          "content": "### 1. Validity\nValid for 30 days.",
+          "prompt": ""
+        }
+      ]
+    }
+  ],
+  "activities": [
+    {
+      "action": "Exported as DOCX",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:48 PM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:47 PM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:46 PM"
+    },
+    {
+      "action": "Document Deleted",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:32 PM"
+    },
+    {
+      "action": "Document Created",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:31 PM"
+    },
+    {
+      "action": "Exported as PDF",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:31 PM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:30 PM"
+    },
+    {
+      "action": "Template Updated",
+      "target": "Demo",
+      "date": "6/9/2026",
+      "time": "06:30 PM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:29 PM"
+    },
+    {
+      "action": "Document Deleted",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:28 PM"
+    },
+    {
+      "action": "Document Created",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:28 PM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:28 PM"
+    },
+    {
+      "action": "Document Deleted",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:28 PM"
+    },
+    {
+      "action": "Document Created",
+      "target": "Demo123",
+      "date": "6/9/2026",
+      "time": "06:28 PM"
+    },
+    {
+      "action": "Document Deleted",
+      "target": "Untitled Document",
+      "date": "6/9/2026",
+      "time": "06:27 PM"
+    },
+    {
+      "action": "Template Updated",
+      "target": "Demo",
+      "date": "6/9/2026",
+      "time": "06:26 PM"
+    },
+    {
+      "action": "Document Deleted",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/9/2026",
+      "time": "06:14 PM"
+    },
+    {
+      "action": "Document Deleted",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/9/2026",
+      "time": "06:14 PM"
+    },
+    {
+      "action": "Document Created",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/9/2026",
+      "time": "06:14 PM"
+    },
+    {
+      "action": "Document Created",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/9/2026",
+      "time": "06:13 PM"
+    },
+    {
+      "action": "Template Updated",
+      "target": "fdg",
+      "date": "6/9/2026",
+      "time": "06:12 PM"
+    },
+    {
+      "action": "Template Updated",
+      "target": "fdg",
+      "date": "6/9/2026",
+      "time": "06:09 PM"
+    },
+    {
+      "action": "Template Updated",
+      "target": "fdg",
+      "date": "6/9/2026",
+      "time": "06:09 PM"
+    },
+    {
+      "action": "Document Updated",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/9/2026",
+      "time": "06:09 PM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/9/2026",
+      "time": "06:08 PM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/9/2026",
+      "time": "06:07 PM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/9/2026",
+      "time": "06:07 PM"
+    },
+    {
+      "action": "Template Updated",
+      "target": "fdg",
+      "date": "6/9/2026",
+      "time": "06:06 PM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/9/2026",
+      "time": "06:03 PM"
+    },
+    {
+      "action": "Template Updated",
+      "target": "fdg",
+      "date": "6/9/2026",
+      "time": "06:02 PM"
+    },
+    {
+      "action": "Exported as PDF",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/8/2026",
+      "time": "10:28 AM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/8/2026",
+      "time": "10:28 AM"
+    },
+    {
+      "action": "Exported as PDF",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/8/2026",
+      "time": "10:24 AM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/8/2026",
+      "time": "10:23 AM"
+    },
+    {
+      "action": "Document Created",
+      "target": "asdfasfsafdasfdadfsad",
+      "date": "6/8/2026",
+      "time": "10:23 AM"
+    },
+    {
+      "action": "Exported as MD",
+      "target": "Untitled Document",
+      "date": "6/8/2026",
+      "time": "10:07 AM"
+    },
+    {
+      "action": "Exported as PDF",
+      "target": "Untitled Document",
+      "date": "6/8/2026",
+      "time": "10:06 AM"
+    },
+    {
+      "action": "Exported as PDF",
+      "target": "Untitled Document",
+      "date": "6/8/2026",
+      "time": "10:06 AM"
+    },
+    {
+      "action": "Template Updated",
+      "target": "fdg",
+      "date": "6/8/2026",
+      "time": "10:02 AM"
+    },
+    {
+      "action": "Exported as DOCX",
+      "target": "Untitled Document",
+      "date": "6/8/2026",
+      "time": "09:47 AM"
+    },
+    {
+      "action": "Template Created",
+      "target": "fdg",
+      "date": "6/8/2026",
+      "time": "09:45 AM"
+    }
+  ]
+}

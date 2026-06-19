@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id          String    @id @default(uuid())
+  clientName  String
+  projectName String
+  createdAt   DateTime  @default(now())
+  sections    Section[]
+}
+
+model Section {
+  id           String   @id @default(uuid())
+  projectId    String
+  heading      String
+  prompt       String
+  content      String
+  displayOrder Int
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
