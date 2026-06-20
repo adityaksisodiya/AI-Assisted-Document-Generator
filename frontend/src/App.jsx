@@ -5,12 +5,13 @@ import remarkGfm from 'remark-gfm';
 import { 
   FileText, LayoutDashboard, FileArchive, Users, TrendingUp, 
   Plus, Edit, Trash2, ArrowLeft, LogOut, CheckCircle, Download, FileDown, FileCode, Eye, AlertTriangle, Save,
-  XCircle, CheckCircle2, Info
+  XCircle, CheckCircle2, Info, Settings, Key, User as UserIcon
 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import './App.css';
 
-const API_URL = 'http://localhost:5000/api';
+// Automatically switch between local development and live production Vercel backend
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // ==========================================
 // ERROR BOUNDARY
@@ -105,7 +106,7 @@ const ResetPasswordScreen = ({ resetToken, onResetSuccess, showToast }) => {
 };
 
 // ==========================================
-// SCREEN 1: LOGIN, REGISTER & FORGOT PASSWORD
+// SCREEN: LOGIN, REGISTER & FORGOT PASSWORD
 // ==========================================
 const LoginScreen = ({ onAuthSuccess, showToast }) => {
   const [view, setView] = useState('login');
@@ -246,7 +247,177 @@ const LoginScreen = ({ onAuthSuccess, showToast }) => {
 };
 
 // ==========================================
-// SCREEN 2: DASHBOARD
+// SCREEN: PROFILE & SETTINGS
+// ==========================================
+const SettingsScreen = ({ hasApiKey, setHasApiKey, showToast, userName, onNameUpdate, handleLogout, onDeleteAccount }) => {
+  const [apiKey, setApiKey] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [name, setName] = useState(userName || '');
+  const [isSavingName, setIsSavingName] = useState(false);
+
+  const [showDeleteKeyModal, setShowDeleteKeyModal] = useState(false);
+  const [isDeletingKey, setIsDeletingKey] = useState(false);
+
+  useEffect(() => {
+    setName(userName || '');
+  }, [userName]);
+
+  const handleUpdateName = async () => {
+    if (!name.trim()) return showToast("Name cannot be empty.", "error");
+    setIsSavingName(true);
+    try {
+      const token = localStorage.getItem('docgen_token');
+      const res = await fetch(`${API_URL}/user/settings/name`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name: name.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update name.");
+
+      showToast("Name updated successfully!", "success");
+      localStorage.setItem('docgen_name', data.name);
+      onNameUpdate(data.name);
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleSaveKey = async () => {
+    if (!apiKey.trim()) return showToast("API Key cannot be empty.", "error");
+    setIsSaving(true);
+    try {
+      const token = localStorage.getItem('docgen_token');
+      const res = await fetch(`${API_URL}/user/settings/api-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ apiKey: apiKey.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save key.");
+      
+      showToast("API Key verified and securely saved!", "success");
+      setHasApiKey(true);
+      setApiKey(''); 
+    } catch (err) { showToast(err.message, "error"); } 
+    finally { setIsSaving(false); }
+  };
+
+  const handleDeleteKey = async () => {
+    setIsDeletingKey(true);
+    try {
+      const token = localStorage.getItem('docgen_token');
+      const res = await fetch(`${API_URL}/user/settings/api-key`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete key.");
+      
+      showToast("API Key deleted successfully.", "success");
+      setHasApiKey(false);
+      setShowDeleteKeyModal(false);
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setIsDeletingKey(false);
+    }
+  };
+
+  return (
+    <div className="page-container">
+      {showDeleteKeyModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Delete API Key</h3>
+            <p>Are you sure you want to permanently remove your Gemini API Key? AI document generation will stop working until a new valid key is added.</p>
+            <div className="modal-actions">
+              <button className="btn-outline" onClick={() => setShowDeleteKeyModal(false)} disabled={isDeletingKey}>Cancel</button>
+              <button className="btn-danger" onClick={handleDeleteKey} disabled={isDeletingKey}>{isDeletingKey ? 'DELETING...' : 'Delete Key'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="page-header"><h2>Profile & Settings</h2></div>
+      <div className="panel" style={{ maxWidth: '600px', margin: '0 auto', marginTop: '2rem', padding: '2rem' }}>
+        
+        {/* PROFILE / NAME UPDATE SECTION */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div className="template-icon" style={{ background: '#e0f2fe', color: '#2563eb', padding: '0.75rem', borderRadius: '8px' }}><Users /></div>
+          <div>
+            <h3 style={{ margin: 0, color: '#111827' }}>Personal Information</h3>
+            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>Update your display name.</p>
+          </div>
+        </div>
+
+        <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+          <label>Full Name</label>
+          <input type="text" className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="John Doe" disabled={isSavingName} />
+        </div>
+        <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleUpdateName} disabled={isSavingName}>
+          {isSavingName ? 'UPDATING...' : 'UPDATE NAME'}
+        </button>
+
+        <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '2.5rem 0' }} />
+
+        {/* SECURITY / API KEY SECTION */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div className="template-icon" style={{ background: '#f3e8ff', color: '#7c3aed', padding: '0.75rem', borderRadius: '8px' }}><Key /></div>
+          <div>
+            <h3 style={{ margin: 0, color: '#111827' }}>Gemini API Integration</h3>
+            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>Your personal API key is AES-256 encrypted before storage.</p>
+          </div>
+        </div>
+
+        {hasApiKey && (
+          <div style={{ padding: '1rem', background: '#ecfdf5', border: '1px solid #10b981', borderRadius: '8px', color: '#065f46', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', fontWeight: 500 }}>
+            <CheckCircle2 size={18} /> You have an active API Key saved. You can generate documents.
+          </div>
+        )}
+
+        <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+          <label>Google Gemini API Key</label>
+          <input type="password" className="form-control" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="AIzaSy..." disabled={isSaving} />
+        </div>
+        <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleSaveKey} disabled={isSaving}>
+          {isSaving ? 'VERIFYING & SAVING...' : (hasApiKey ? 'UPDATE API KEY' : 'SAVE API KEY')}
+        </button>
+        {hasApiKey && (
+          <button className="btn-outline" onClick={() => setShowDeleteKeyModal(true)} style={{ color: '#ef4444', borderColor: '#ef4444', marginTop: '1rem', width: '100%', justifyContent: 'center' }}>
+            DELETE API KEY
+          </button>
+        )}
+
+        <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '2.5rem 0' }} />
+
+        {/* ACCOUNT MANAGEMENT SECTION */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div className="template-icon" style={{ background: '#fee2e2', color: '#ef4444', padding: '0.75rem', borderRadius: '8px' }}><LogOut /></div>
+          <div>
+            <h3 style={{ margin: 0, color: '#111827' }}>Account Management</h3>
+            <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>Manage your session and account data.</p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button className="btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={() => handleLogout(false)}>
+            LOGOUT
+          </button>
+          <button className="btn-danger" style={{ flex: 1, justifyContent: 'center' }} onClick={onDeleteAccount}>
+            DELETE ACCOUNT
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// SCREEN: DASHBOARD
 // ==========================================
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -370,7 +541,7 @@ const DashboardScreen = ({ templates, documents, activities }) => {
 };
 
 // ==========================================
-// SCREEN 3: TEMPLATES LIST
+// SCREEN: TEMPLATES LIST
 // ==========================================
 const TemplatesScreen = ({ templates, deleteTemplate, navigateToEdit, navigate }) => {
   const [modalOpen, setModalOpen] = useState(false);
@@ -444,7 +615,7 @@ const TemplatesScreen = ({ templates, deleteTemplate, navigateToEdit, navigate }
 };
 
 // ==========================================
-// SCREEN 4: CREATE / EDIT TEMPLATE BUILDER 
+// SCREEN: CREATE / EDIT TEMPLATE BUILDER
 // ==========================================
 const CreateTemplateScreen = ({ saveTemplate, navigate, templates, editTemplateId, showToast }) => {
   const [tab, setTab] = useState('BASIC');
@@ -661,7 +832,7 @@ const CreateTemplateScreen = ({ saveTemplate, navigate, templates, editTemplateI
 };
 
 // ==========================================
-// SCREEN 5: DOCUMENTS LIST
+// SCREEN: DOCUMENTS LIST
 // ==========================================
 const DocumentsScreen = ({ documents, templates, deleteDocument, navigate, openDocument }) => {
   const [filter, setFilter] = useState('All Templates');
@@ -734,7 +905,7 @@ const DocumentsScreen = ({ documents, templates, deleteDocument, navigate, openD
 };
 
 // ==========================================
-// SCREEN 6: DEDICATED DOCUMENT VIEWER
+// SCREEN: DEDICATED DOCUMENT VIEWER
 // ==========================================
 const DocumentViewScreen = ({ doc, navigate, editDocument, exportDocument, showToast }) => {
   const [modalOpen, setModalOpen] = useState(false);
@@ -810,7 +981,7 @@ const DocumentViewScreen = ({ doc, navigate, editDocument, exportDocument, showT
 };
 
 // ==========================================
-// SCREEN 7: GENERATION WORKSPACE
+// SCREEN: GENERATION WORKSPACE
 // ==========================================
 const GenerateDocumentScreen = ({ templates, editDoc, saveDocument, exportDocument, navigate, showToast }) => {
   const [selectedTemplate, setSelectedTemplate] = useState('');
@@ -871,11 +1042,18 @@ const GenerateDocumentScreen = ({ templates, editDoc, saveDocument, exportDocume
         body: JSON.stringify({ prompt: activeData.prompt, heading: activeData.heading, documentTitle: docTitle })
       });
       const data = await res.json();
+      
+      if (res.status === 400 && data.error === "MISSING_API_KEY") {
+         showToast("Please add your Gemini API key from Profile → Settings.", "error");
+         setTimeout(() => navigate('settings'), 2000);
+         throw new Error("Missing API Key");
+      }
       if (!res.ok) throw new Error(data.error || "Server generation failed.");
+      
       updateActiveSection('content', data.content);
-      showToast("AI Content generated successfully!", "success");
+      showToast("AI Content generated!", "success");
     } catch (err) {
-      showToast(`AI Error: ${err.message}`, "error");
+      if(err.message !== "Missing API Key") showToast(`AI Error: ${err.message}`, "error");
     } finally {
       setIsGenerating(false);
     }
@@ -1061,8 +1239,8 @@ function App() {
   const [editTemplateId, setEditTemplateId] = useState(null);
   const [viewDocumentData, setViewDocumentData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasApiKey, setHasApiKey] = useState(false);
   
-  // Custom Toast State
   const [toast, setToast] = useState(null);
   const showToast = useCallback((message, type = 'info') => {
     setToast({ message, type });
@@ -1080,7 +1258,6 @@ function App() {
   const [documents, setDocuments] = useState([]);
   const [activities, setActivities] = useState([]);
 
-  // Verify Email Interceptor
   useEffect(() => {
     if (verifyToken) {
       setIsLoading(true);
@@ -1131,6 +1308,7 @@ function App() {
         if (data.templates) setTemplates(data.templates);
         if (data.documents) setDocuments(data.documents);
         if (data.activities) setActivities(data.activities);
+        if (data.hasApiKey !== undefined) setHasApiKey(data.hasApiKey);
       } else if (res.status === 401 || res.status === 403) {
          handleLogout(false, "Session expired. Please log in again.");
       }
@@ -1158,6 +1336,7 @@ function App() {
     setTemplates([]);
     setDocuments([]);
     setActivities([]);
+    setHasApiKey(false);
     if(!isDelete) showToast(msg, "info");
   };
 
@@ -1293,6 +1472,7 @@ function App() {
       case 'documents': return <DocumentsScreen documents={documents} templates={templates} deleteDocument={handleDeleteDocument} navigate={setCurrentPage} openDocument={(doc) => { setViewDocumentData(doc); setCurrentPage('view_document'); }} />;
       case 'view_document': return <DocumentViewScreen doc={viewDocumentData} navigate={setCurrentPage} editDocument={(doc) => { setViewDocumentData(doc); setCurrentPage('generate_document'); }} exportDocument={exportDocumentFile} showToast={showToast} />;
       case 'generate_document': return <GenerateDocumentScreen templates={templates} editDoc={viewDocumentData} saveDocument={handleSaveDocument} exportDocument={exportDocumentFile} navigate={setCurrentPage} showToast={showToast} />;
+      case 'settings': return <SettingsScreen hasApiKey={hasApiKey} setHasApiKey={setHasApiKey} showToast={showToast} userName={user.name} onNameUpdate={(newName) => setUser({ ...user, name: newName, initial: newName.charAt(0).toUpperCase() })} handleLogout={handleLogout} onDeleteAccount={() => setDeleteModalOpen(true)} />;
       default: return <DashboardScreen templates={templates} documents={documents} activities={activities} />;
     }
   };
@@ -1321,6 +1501,10 @@ function App() {
             <div className={`nav-item ${currentPage === 'dashboard' ? 'active' : ''}`} onClick={() => { setViewDocumentData(null); setCurrentPage('dashboard'); }}><LayoutDashboard size={20} /> Dashboard</div>
             <div className={`nav-item ${['templates', 'create_template'].includes(currentPage) ? 'active' : ''}`} onClick={() => { setViewDocumentData(null); setCurrentPage('templates'); }}><FileText size={20} /> Templates</div>
             <div className={`nav-item ${['documents', 'generate_document', 'view_document'].includes(currentPage) ? 'active' : ''}`} onClick={() => { setViewDocumentData(null); setCurrentPage('documents'); }}><FileArchive size={20} /> Documents</div>
+            
+            <div className={`nav-item ${currentPage === 'settings' ? 'active' : ''}`} onClick={() => { setViewDocumentData(null); setCurrentPage('settings'); }} style={{ marginTop: 'auto', borderTop: '1px solid #334155', paddingTop: '1rem' }}>
+              <Settings size={20} /> Settings
+            </div>
           </div>
         </div>
 
@@ -1330,6 +1514,7 @@ function App() {
               {currentPage === 'dashboard' && "Analytics Dashboard"}
               {['templates', 'create_template'].includes(currentPage) && "Template Architect"}
               {['documents', 'generate_document', 'view_document'].includes(currentPage) && "Document Repository"}
+              {currentPage === 'settings' && "Account Configuration"}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
               <div style={{ width: '38px', height: '38px', background: 'var(--primary)', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} onClick={() => setShowDropdown(!showDropdown)}>

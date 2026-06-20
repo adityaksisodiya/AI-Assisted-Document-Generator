@@ -22,11 +22,36 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 // ==========================================
+// ENCRYPTION CONFIGURATION
+// ==========================================
+// IMPORTANT: In production, ENCRYPTION_KEY must be exactly 32 characters.
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "12345678901234567890123456789012"; 
+const IV_LENGTH = 16;
+
+function encryptKey(text) {
+    let iv = crypto.randomBytes(IV_LENGTH);
+    let cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+    let encrypted = cipher.update(text);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+function decryptKey(text) {
+    let textParts = text.split(':');
+    let iv = Buffer.from(textParts.shift(), 'hex');
+    let encryptedText = Buffer.from(textParts.join(':'), 'hex');
+    let decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+}
+
+// ==========================================
 // MONGODB ATLAS CONNECTION
 // ==========================================
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('✅ MongoDB Atlas Connected Successfully'))
-    .catch(err => console.error('❌ MongoDB Connection Error:', err));
+    .then(() => console.log('✅ MongoDB Connected'))
+    .catch(err => console.error('❌ MongoDB Error:', err));
 
 // ==========================================
 // MONGODB SCHEMAS & MODELS
@@ -40,7 +65,8 @@ const UserSchema = new mongoose.Schema({
     isVerified: { type: Boolean, default: false },
     verificationToken: String,
     resetPasswordToken: String,
-    resetPasswordExpires: Date
+    resetPasswordExpires: Date,
+    encryptedApiKey: String
 });
 
 const TemplateSchema = new mongoose.Schema({
@@ -86,17 +112,17 @@ const Activity = mongoose.model('Activity', ActivitySchema);
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.status(401).json({ error: "Access Denied: No Token Provided. Please log in again." });
+    if (!token) return res.status(401).json({ error: "Access Denied: No Token Provided." });
 
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({ error: "Session Expired. Please log in again." });
+        if (err) return res.status(403).json({ error: "Session Expired." });
         req.user = user;
         next();
     });
 };
 
 // ==========================================
-// AUTHENTICATION & RECOVERY ROUTES
+// AUTHENTICATION ROUTES
 // ==========================================
 app.post('/api/auth/register', async (req, res) => {
     try {
@@ -104,23 +130,20 @@ app.post('/api/auth/register', async (req, res) => {
         if (!name || !email || !password) return res.status(400).json({ error: "All fields are required" });
         
         const cleanEmail = email.trim().toLowerCase();
-        const existingUser = await User.findOne({ email: cleanEmail });
-        if (existingUser) return res.status(400).json({ error: "Email address is already in use." });
+        if (await User.findOne({ email: cleanEmail })) return res.status(400).json({ error: "Email address is already in use." });
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
         const verificationToken = crypto.randomBytes(32).toString('hex');
 
         const newUser = new User({ 
-            name: name.trim(), 
-            email: cleanEmail, 
-            password: hashedPassword,
-            isVerified: false,
-            verificationToken: verificationToken
+            name: name.trim(), email: cleanEmail, password: hashedPassword,
+            isVerified: false, verificationToken: verificationToken
         });
         await newUser.save();
 
-        const verifyUrl = `http://localhost:5173/?verifyToken=${verificationToken}`;
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const verifyUrl = `${frontendUrl}/?verifyToken=${verificationToken}`;
 
         if (!process.env.SMTP_USER) {
             console.log('\n=============================================================');
@@ -151,20 +174,11 @@ app.post('/api/auth/register', async (req, res) => {
 
 app.post('/api/auth/verify-email', async (req, res) => {
     try {
-        const { token } = req.body;
-        const user = await User.findOne({ verificationToken: token });
-        
+        const user = await User.findOne({ verificationToken: req.body.token });
         if (!user) return res.status(400).json({ error: "Invalid or expired verification token." });
-
-        await User.updateOne(
-            { _id: user._id }, 
-            { isVerified: true, $unset: { verificationToken: 1 } }
-        );
-
+        await User.updateOne({ _id: user._id }, { isVerified: true, $unset: { verificationToken: 1 } });
         res.json({ message: "Email verified successfully. You can now log in." });
-    } catch (e) {
-        res.status(500).json({ error: "Server Error." });
-    }
+    } catch (e) { res.status(500).json({ error: "Server Error." }); }
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -173,42 +187,35 @@ app.post('/api/auth/login', async (req, res) => {
         const cleanEmail = email.trim().toLowerCase();
         
         const user = await User.findOne({ email: cleanEmail });
-        if (!user) return res.status(400).json({ error: "Invalid email or password." });
-
+        if (!user || !(await bcrypt.compare(password, user.password))) {
+            return res.status(400).json({ error: "Invalid email or password." });
+        }
         if (user.isVerified === false) {
             return res.status(403).json({ error: "Please verify your email before signing in." });
         }
 
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) return res.status(400).json({ error: "Invalid email or password." });
-
         await User.updateOne({ _id: user._id }, { lastLogin: new Date() });
-
         const token = jwt.sign({ id: user._id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '24h' });
-        const displayName = user.name || user.email.split('@')[0];
         
+        const displayName = user.name || user.email.split('@')[0];
         res.json({ token, email: user.email, name: displayName });
-    } catch (e) {
-        res.status(500).json({ error: "Server Login Error." });
-    }
+    } catch (e) { res.status(500).json({ error: "Server Login Error." }); }
 });
 
 app.post('/api/auth/forgot-password', async (req, res) => {
     try {
-        const { email } = req.body;
-        const cleanEmail = email.trim().toLowerCase();
+        const cleanEmail = req.body.email.trim().toLowerCase();
         const user = await User.findOne({ email: cleanEmail });
-        
         if (!user) return res.status(400).json({ error: "Email not found." });
 
         const resetToken = crypto.randomBytes(32).toString('hex');
-        
         await User.updateOne(
             { _id: user._id }, 
             { resetPasswordToken: resetToken, resetPasswordExpires: Date.now() + 15 * 60 * 1000 }
         );
 
-        const resetUrl = `http://localhost:5173/?resetToken=${resetToken}`;
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const resetUrl = `${frontendUrl}/?resetToken=${resetToken}`;
 
         if (!process.env.SMTP_USER) {
             console.log('\n=============================================================');
@@ -232,15 +239,12 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         }
 
         res.json({ message: "Password reset link sent." });
-    } catch (error) {
-        res.status(500).json({ error: "Server Error." });
-    }
+    } catch (error) { res.status(500).json({ error: "Server Error." }); }
 });
 
 app.post('/api/auth/reset-password', async (req, res) => {
     try {
         const { token, newPassword } = req.body;
-        
         const user = await User.findOne({
             resetPasswordToken: token,
             resetPasswordExpires: { $gt: Date.now() }
@@ -253,16 +257,11 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
         await User.updateOne(
             { _id: user._id },
-            { 
-                password: hashedPassword,
-                $unset: { resetPasswordToken: 1, resetPasswordExpires: 1 }
-            }
+            { password: hashedPassword, $unset: { resetPasswordToken: 1, resetPasswordExpires: 1 } }
         );
 
         res.json({ message: "Password updated successfully." });
-    } catch (error) {
-        res.status(500).json({ error: "Server Error." });
-    }
+    } catch (error) { res.status(500).json({ error: "Server Error." }); }
 });
 
 app.delete('/api/auth/delete-account', authenticateToken, async (req, res) => {
@@ -272,26 +271,22 @@ app.delete('/api/auth/delete-account', authenticateToken, async (req, res) => {
         await Document.deleteMany({ userId });
         await Activity.deleteMany({ userId });
         await User.deleteOne({ _id: userId });
-        
         res.json({ message: "Account deleted successfully." });
-    } catch (e) {
-        res.status(500).json({ error: "Failed to delete account." });
-    }
+    } catch (e) { res.status(500).json({ error: "Failed to delete account." }); }
 });
 
 // ==========================================
-// PROTECTED DATA ROUTES
+// USER SETTINGS & DATA ROUTES
 // ==========================================
 app.get('/api/data', authenticateToken, async (req, res) => {
     try {
+        const user = await User.findById(req.user.id);
         const templates = await Template.find({ userId: req.user.id }, '-_id -__v -userId');
         const documents = await Document.find({ userId: req.user.id }, '-_id -__v -userId').sort({ updatedAt: -1 });
         const activities = await Activity.find({ userId: req.user.id }, '-_id -__v -userId').sort({ timestamp: -1 }).limit(50);
         
-        res.json({ templates, documents, activities });
-    } catch (e) {
-        res.status(500).json({ error: "Failed to fetch workspace data." });
-    }
+        res.json({ templates, documents, activities, hasApiKey: !!user.encryptedApiKey });
+    } catch (e) { res.status(500).json({ error: "Failed to fetch workspace data." }); }
 });
 
 app.post('/api/data', authenticateToken, async (req, res) => {
@@ -301,43 +296,105 @@ app.post('/api/data', authenticateToken, async (req, res) => {
 
         if (templates) {
             await Template.deleteMany({ userId });
-            const userTemplates = templates.map(t => ({ ...t, userId }));
-            if (userTemplates.length > 0) await Template.insertMany(userTemplates);
+            if (templates.length > 0) await Template.insertMany(templates.map(t => ({ ...t, userId })));
         }
-
         if (documents) {
             await Document.deleteMany({ userId });
-            const userDocs = documents.map(d => ({ ...d, userId }));
-            if (userDocs.length > 0) await Document.insertMany(userDocs);
+            if (documents.length > 0) await Document.insertMany(documents.map(d => ({ ...d, userId })));
         }
-
         if (activities) {
             await Activity.deleteMany({ userId });
-            const userActs = activities.map(a => ({ ...a, userId }));
-            if (userActs.length > 0) await Activity.insertMany(userActs);
+            if (activities.length > 0) await Activity.insertMany(activities.map(a => ({ ...a, userId })));
+        }
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Database synchronization failed." }); }
+});
+
+// Update User's Name
+app.post('/api/user/settings/name', authenticateToken, async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name || typeof name !== 'string') return res.status(400).json({ error: "Name is required." });
+
+        const cleanName = name.trim();
+        if (cleanName.length === 0) return res.status(400).json({ error: "Name cannot be empty." });
+
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ error: "User not found." });
+
+        user.name = cleanName;
+        await user.save();
+
+        res.json({ message: "Name updated successfully.", name: cleanName });
+    } catch (e) {
+        console.error("Name Update Error:", e);
+        res.status(500).json({ error: "Server error while updating name." });
+    }
+});
+
+// Validate & Save Personal Gemini API Key
+app.post('/api/user/settings/api-key', authenticateToken, async (req, res) => {
+    try {
+        const { apiKey } = req.body;
+        if (!apiKey) return res.status(400).json({ error: "API key is required." });
+
+        const cleanKey = apiKey.trim();
+
+        try {
+            const testGenAI = new GoogleGenerativeAI(cleanKey);
+            const model = testGenAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+            await model.generateContent("Respond with the exact word: OK");
+        } catch (error) {
+            return res.status(400).json({ error: "Invalid Gemini API Key. Please verify and try again." });
         }
 
-        res.json({ success: true });
+        const user = await User.findById(req.user.id);
+        user.encryptedApiKey = encryptKey(cleanKey);
+        await user.save();
+
+        res.json({ message: "API Key verified and saved securely." });
     } catch (e) {
-        res.status(500).json({ error: "Database synchronization failed." });
+        console.error("API Key Save Error:", e);
+        res.status(500).json({ error: "Server error while saving API key." });
+    }
+});
+
+// Delete Personal Gemini API Key
+app.delete('/api/user/settings/api-key', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ error: "User not found." });
+
+        await User.updateOne({ _id: user._id }, { $unset: { encryptedApiKey: 1 } });
+        res.json({ message: "API Key deleted successfully." });
+    } catch (e) {
+        console.error("API Key Delete Error:", e);
+        res.status(500).json({ error: "Server error while deleting API key." });
     }
 });
 
 // ==========================================
 // AI & EXPORT ROUTES
 // ==========================================
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
 app.post('/api/generate-section', authenticateToken, async (req, res) => {
     try {
         const { prompt, heading, documentTitle } = req.body;
         if(!prompt) throw new Error("Prompt required");
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const user = await User.findById(req.user.id);
+        if (!user || !user.encryptedApiKey) {
+            return res.status(400).json({ error: "MISSING_API_KEY" });
+        }
+
+        const decryptedKey = decryptKey(user.encryptedApiKey);
+        const userGenAI = new GoogleGenerativeAI(decryptedKey);
+        const model = userGenAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        
         const systemInstruction = `You are an elite Enterprise Document Architect. Generate content for section: "${heading}" within document: "${documentTitle}". Use pure Markdown.`;
         const result = await model.generateContent({ contents: [{ role: "user", parts: [{ text: `${systemInstruction}\n\nRequest: ${prompt}` }] }] });
         res.json({ content: result.response.text() });
     } catch (error) {
-        res.status(500).json({ error: "AI Generation failed." });
+        res.status(500).json({ error: error.message || "AI Generation failed." });
     }
 });
 
@@ -351,7 +408,6 @@ app.post('/api/export-document', authenticateToken, (req, res) => {
         const scriptDir = path.dirname(scriptPath); 
 
         const pythonProcess = spawn('python', [scriptPath, fileId]);
-        
         let outputData = '';
         let errorData = '';
 
@@ -359,14 +415,10 @@ app.post('/api/export-document', authenticateToken, (req, res) => {
         pythonProcess.stderr.on('data', (data) => { errorData += data.toString(); });
 
         pythonProcess.on('close', (code) => {
-            // CRITICAL FIX: Safe, non-revealing error handling for failed PDF conversions
             if (code === 2 && format === 'pdf') {
-                console.error("LibreOffice Conversion Failed:", errorData);
                 return res.status(500).json({ error: 'Unable to generate PDF. Please try again.' });
             }
-
             if (code !== 0 && code !== 2) {
-                console.error("Python Execution Crash:", errorData);
                 return res.status(500).json({ error: 'Unable to export document. Please try again.' });
             }
 
@@ -390,7 +442,6 @@ app.post('/api/export-document', authenticateToken, (req, res) => {
                     }
                 });
             } else {
-                console.error("File writing failed internally.");
                 res.status(500).json({ error: `Unable to process export file. Please try again.` });
             }
         });
@@ -404,5 +455,9 @@ app.post('/api/export-document', authenticateToken, (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Vercel Serverless requirements
+if (process.env.NODE_ENV !== 'production') {
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+export default app;
