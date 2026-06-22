@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,6 +10,9 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
+
+// NEW PURE NODE.JS GENERATORS
+import { generateDocx, generatePdf, generateMd } from './documentGenerator.js';
 
 dotenv.config();
 
@@ -24,7 +26,6 @@ app.use(express.json({ limit: '50mb' }));
 // ==========================================
 // ENCRYPTION CONFIGURATION
 // ==========================================
-// IMPORTANT: In production, ENCRYPTION_KEY must be exactly 32 characters.
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "12345678901234567890123456789012"; 
 const IV_LENGTH = 16;
 
@@ -310,7 +311,6 @@ app.post('/api/data', authenticateToken, async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Database synchronization failed." }); }
 });
 
-// Update User's Name
 app.post('/api/user/settings/name', authenticateToken, async (req, res) => {
     try {
         const { name } = req.body;
@@ -327,12 +327,10 @@ app.post('/api/user/settings/name', authenticateToken, async (req, res) => {
 
         res.json({ message: "Name updated successfully.", name: cleanName });
     } catch (e) {
-        console.error("Name Update Error:", e);
         res.status(500).json({ error: "Server error while updating name." });
     }
 });
 
-// Validate & Save Personal Gemini API Key
 app.post('/api/user/settings/api-key', authenticateToken, async (req, res) => {
     try {
         const { apiKey } = req.body;
@@ -354,12 +352,10 @@ app.post('/api/user/settings/api-key', authenticateToken, async (req, res) => {
 
         res.json({ message: "API Key verified and saved securely." });
     } catch (e) {
-        console.error("API Key Save Error:", e);
         res.status(500).json({ error: "Server error while saving API key." });
     }
 });
 
-// Delete Personal Gemini API Key
 app.delete('/api/user/settings/api-key', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
@@ -368,7 +364,6 @@ app.delete('/api/user/settings/api-key', authenticateToken, async (req, res) => 
         await User.updateOne({ _id: user._id }, { $unset: { encryptedApiKey: 1 } });
         res.json({ message: "API Key deleted successfully." });
     } catch (e) {
-        console.error("API Key Delete Error:", e);
         res.status(500).json({ error: "Server error while deleting API key." });
     }
 });
@@ -398,60 +393,39 @@ app.post('/api/generate-section', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/export-document', authenticateToken, (req, res) => {
+// PURE NODE.JS DOCUMENT EXPORT ROUTE
+app.post('/api/export-document', authenticateToken, async (req, res) => {
     try {
         const { format = 'docx', documentTitle = 'Document', sections = [], customization = {} } = req.body;
         if (sections.length === 0) return res.status(400).json({ error: 'Cannot export an empty document.' });
 
-        const fileId = crypto.randomUUID();
-        const scriptPath = fs.existsSync(path.join(__dirname, '../generate_docx.py')) ? path.join(__dirname, '../generate_docx.py') : path.join(__dirname, 'generate_docx.py');
-        const scriptDir = path.dirname(scriptPath); 
+        let buffer;
+        let contentType;
+        let ext;
 
-        const pythonProcess = spawn('python', [scriptPath, fileId]);
-        let outputData = '';
-        let errorData = '';
+        if (format === 'docx') {
+            buffer = await generateDocx(documentTitle, sections, customization);
+            contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            ext = 'docx';
+        } else if (format === 'pdf') {
+            buffer = await generatePdf(documentTitle, sections, customization);
+            contentType = 'application/pdf';
+            ext = 'pdf';
+        } else if (format === 'md') {
+            buffer = await generateMd(documentTitle, sections, customization);
+            contentType = 'text/markdown';
+            ext = 'md';
+        } else {
+            return res.status(400).json({ error: 'Invalid export format requested.' });
+        }
 
-        pythonProcess.stdout.on('data', (data) => { outputData += data.toString(); });
-        pythonProcess.stderr.on('data', (data) => { errorData += data.toString(); });
-
-        pythonProcess.on('close', (code) => {
-            if (code === 2 && format === 'pdf') {
-                return res.status(500).json({ error: 'Unable to generate PDF. Please try again.' });
-            }
-            if (code !== 0 && code !== 2) {
-                return res.status(500).json({ error: 'Unable to export document. Please try again.' });
-            }
-
-            const expectedFilename = `${fileId}.${format}`;
-            const filePath = path.join(scriptDir, expectedFilename);
-
-            if (fs.existsSync(filePath)) {
-                let contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-                if (format === 'pdf') contentType = 'application/pdf';
-                if (format === 'md') contentType = 'text/markdown';
-
-                res.setHeader('Content-Type', contentType);
-                res.setHeader('Content-Disposition', `attachment; filename="DocGen_${documentTitle.replace(/\s+/g, '_')}.${format}"`);
-                
-                const fileStream = fs.createReadStream(filePath);
-                fileStream.pipe(res);
-                fileStream.on('end', () => {
-                    try { fs.unlinkSync(filePath); } catch(e) {}
-                    if (format === 'pdf') {
-                        try { fs.unlinkSync(path.join(scriptDir, `${fileId}.docx`)); } catch(e) {}
-                    }
-                });
-            } else {
-                res.status(500).json({ error: `Unable to process export file. Please try again.` });
-            }
-        });
-
-        const payloadStr = JSON.stringify({ format, documentTitle, sections, customization });
-        pythonProcess.stdin.write(Buffer.from(payloadStr, 'utf-8'));
-        pythonProcess.stdin.end();
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="DocGen_${documentTitle.replace(/\s+/g, '_')}.${ext}"`);
+        res.send(buffer);
 
     } catch (e) {
-        res.status(500).json({ error: "Fatal error in export pipeline." });
+        console.error("Export Pipeline Error:", e);
+        res.status(500).json({ error: "Fatal error in pure Node.js export pipeline." });
     }
 });
 

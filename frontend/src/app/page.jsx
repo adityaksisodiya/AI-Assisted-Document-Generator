@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect, Component, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
@@ -5,13 +7,12 @@ import remarkGfm from 'remark-gfm';
 import { 
   FileText, LayoutDashboard, FileArchive, Users, TrendingUp, 
   Plus, Edit, Trash2, ArrowLeft, LogOut, CheckCircle, Download, FileDown, FileCode, Eye, AlertTriangle, Save,
-  XCircle, CheckCircle2, Info, Settings, Key, User as UserIcon
+  XCircle, CheckCircle2, Info, Settings, Key
 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
-import './App.css';
 
-// Automatically switch between local development and live production Vercel backend
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// NEXT.JS ENVIRONMENT VARIABLE
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 // ==========================================
 // ERROR BOUNDARY
@@ -623,7 +624,8 @@ const CreateTemplateScreen = ({ saveTemplate, navigate, templates, editTemplateI
   const [sectionToDelete, setSectionToDelete] = useState(null);
   
   const [template, setTemplate] = useState({
-    id: crypto.randomUUID(), name: '', title: '', description: '',
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(), 
+    name: '', title: '', description: '',
     customization: { font: 'Arial', size: 12, header: '', footer: '', marginTop: 72, marginBottom: 72, marginLeft: 72, marginRight: 72, bgColor: '#ffffff', textColor: '#000000' },
     sections: [], date: new Date().toISOString()
   });
@@ -660,7 +662,7 @@ const CreateTemplateScreen = ({ saveTemplate, navigate, templates, editTemplateI
   const addSection = () => {
     setTemplate({
       ...template,
-      sections: [...(template.sections || []), { id: crypto.randomUUID(), heading: 'New Section', type: 'Text', prompt: '', content: '' }]
+      sections: [...(template.sections || []), { id: Math.random().toString(), heading: 'New Section', type: 'Text', prompt: '', content: '' }]
     });
   };
 
@@ -1065,7 +1067,7 @@ const GenerateDocumentScreen = ({ templates, editDoc, saveDocument, exportDocume
     if (!templateDetails) return showToast("Template reference lost.", "error");
 
     const finalDoc = {
-      id: editingDocId || crypto.randomUUID(),
+      id: editingDocId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString()),
       title: docTitle,
       templateId: templateDetails.id,
       templateName: templateDetails.name,
@@ -1247,16 +1249,21 @@ function App() {
     setTimeout(() => setToast(null), 4000);
   }, []);
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const resetTokenFromUrl = urlParams.get('resetToken');
-  const verifyTokenFromUrl = urlParams.get('verifyToken');
-  
-  const [resetToken, setResetToken] = useState(resetTokenFromUrl);
-  const [verifyToken, setVerifyToken] = useState(verifyTokenFromUrl);
+  const [resetToken, setResetToken] = useState(null);
+  const [verifyToken, setVerifyToken] = useState(null);
   
   const [templates, setTemplates] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [activities, setActivities] = useState([]);
+
+  // NEXT.JS MOUNTING FIX: Safe window/URL parsing in Next.js Client Component
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      setResetToken(urlParams.get('resetToken'));
+      setVerifyToken(urlParams.get('verifyToken'));
+    }
+  }, []);
 
   useEffect(() => {
     if (verifyToken) {
@@ -1273,7 +1280,7 @@ function App() {
       })
       .catch(err => showToast(err.message, "error"))
       .finally(() => {
-        window.history.replaceState({}, document.title, window.location.pathname);
+        if (typeof window !== 'undefined') window.history.replaceState({}, document.title, window.location.pathname);
         setVerifyToken(null);
         setIsLoading(false);
       });
@@ -1286,15 +1293,17 @@ function App() {
       return;
     }
 
-    const token = localStorage.getItem('docgen_token');
-    const email = localStorage.getItem('docgen_email');
-    const name = localStorage.getItem('docgen_name');
-    
-    if (token && email && name) {
-      setUser({ email, name, initial: name.charAt(0).toUpperCase() });
-      fetchData(token);
-    } else {
-      setIsLoading(false);
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('docgen_token');
+      const email = localStorage.getItem('docgen_email');
+      const name = localStorage.getItem('docgen_name');
+      
+      if (token && email && name) {
+        setUser({ email, name, initial: name.charAt(0).toUpperCase() });
+        fetchData(token);
+      } else {
+        setIsLoading(false);
+      }
     }
   }, [resetToken, verifyToken]);
 
@@ -1390,7 +1399,7 @@ function App() {
           resetToken={resetToken} 
           showToast={showToast}
           onResetSuccess={() => {
-            window.history.replaceState({}, document.title, window.location.pathname);
+            if (typeof window !== 'undefined') window.history.replaceState({}, document.title, window.location.pathname);
             setResetToken(null);
           }} 
         />
