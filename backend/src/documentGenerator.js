@@ -18,16 +18,30 @@ const __dirname = path.dirname(__filename);
 const ptToTwip = (pt) => Math.round(pt * 20);
 const inchToEmu = (inch) => Math.round(inch * 914400);
 
-// Returns the actual file path string (required for PDFMake Fonts)
+// Bulletproof Vercel Path Resolution (Case-Insensitive Scanner)
 function getAssetPath(filename) {
-    const paths = [
-        path.join(__dirname, 'assets', filename),
-        path.join(process.cwd(), 'src', 'assets', filename),
-        path.join(process.cwd(), 'backend', 'src', 'assets', filename),
-        path.join(process.cwd(), 'assets', filename)
+    const directories = [
+        path.join(__dirname, 'assets'),
+        path.join(process.cwd(), 'src', 'assets'),
+        path.join(process.cwd(), 'assets'),
+        path.join('/var/task', 'src', 'assets') // Vercel Serverless hardcoded fallback
     ];
-    for (let p of paths) {
-        if (fs.existsSync(p)) return p;
+
+    const targetLower = filename.toLowerCase();
+
+    for (let dir of directories) {
+        try {
+            if (fs.existsSync(dir)) {
+                // Read the directory to allow case-insensitive matching (Crucial for Windows to Linux deployment)
+                const files = fs.readdirSync(dir);
+                const match = files.find(f => f.toLowerCase() === targetLower);
+                if (match) {
+                    return path.join(dir, match);
+                }
+            }
+        } catch (e) {
+            // Ignore read errors for inaccessible paths
+        }
     }
     return null;
 }
@@ -38,7 +52,7 @@ function getAssetBuffer(filename) {
     if (assetPath) {
         return fs.readFileSync(assetPath);
     }
-    console.warn(`[WARNING] Missing asset: ${filename}`);
+    console.warn(`[WARNING] Missing asset on disk: ${filename}`);
     return null;
 }
 
@@ -222,7 +236,7 @@ export async function generateDocx(title, sections, cust) {
         spacing: { before: ptToTwip(addressSpace), after: ptToTwip(4) },
         children: [
             new TextRun({ text: "OFFICE NO. 12, 2ND FLOOR, NO.40 DLF INDUSTRIAL AREA, KIRTI NAGAR, DELHI 110015.", bold: true, size: 9 * 2, font: font, color: textColor }),
-            new TextRun({ text: "Contact No. : ", bold: true, size: 9 * 2, font: font, color: textColor, break: 1 }), // Force Line Break
+            new TextRun({ text: "Contact No. : ", bold: true, size: 9 * 2, font: font, color: textColor, break: 1 }),
             new TextRun({ text: "+91 99871 59986", bold: true, size: 9 * 2, font: font, color: "2563eb" }),
             new TextRun({ text: " | Email : ", bold: true, size: 9 * 2, font: font, color: textColor }),
             new TextRun({ text: "info@sgwebapp.com", bold: true, size: 9 * 2, font: font, color: "2563eb" }),
