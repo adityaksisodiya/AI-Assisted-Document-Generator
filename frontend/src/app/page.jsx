@@ -7,7 +7,7 @@ import remarkGfm from 'remark-gfm';
 import { 
   FileText, LayoutDashboard, FileArchive, Users, TrendingUp, 
   Plus, Edit, Trash2, ArrowLeft, LogOut, CheckCircle, Download, FileDown, FileCode, Eye, AlertTriangle, Save,
-  XCircle, CheckCircle2, Info, Settings, Key
+  XCircle, CheckCircle2, Info, Settings, Key, Upload, Image as ImageIcon
 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
@@ -626,7 +626,11 @@ const CreateTemplateScreen = ({ saveTemplate, navigate, templates, editTemplateI
   const [template, setTemplate] = useState({
     id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(), 
     name: '', title: '', description: '',
-    customization: { font: 'Arial', size: 12, header: '', footer: '', marginTop: 72, marginBottom: 72, marginLeft: 72, marginRight: 72, bgColor: '#ffffff', textColor: '#000000' },
+    customization: { 
+      font: 'Arial', size: 12, header: '', footer: '', marginTop: 72, marginBottom: 72, marginLeft: 72, marginRight: 72, bgColor: '#ffffff', textColor: '#000000',
+      images: [],
+      watermark: { enabled: false, data: '', name: '', width: 350, height: 350, opacity: 0.15, position: 'center' }
+    },
     sections: [], date: new Date().toISOString()
   });
 
@@ -636,7 +640,18 @@ const CreateTemplateScreen = ({ saveTemplate, navigate, templates, editTemplateI
       if (existing) {
         const hydratedCustomization = {
           font: 'Arial', size: 12, header: '', footer: '', marginTop: 72, marginBottom: 72, marginLeft: 72, marginRight: 72, bgColor: '#ffffff', textColor: '#000000',
-          ...existing.customization
+          ...existing.customization,
+          images: Array.isArray(existing.customization?.images) ? existing.customization.images : [],
+          watermark: {
+            enabled: false,
+            data: '',
+            name: '',
+            width: 350,
+            height: 350,
+            opacity: 0.15,
+            position: 'center',
+            ...(existing.customization?.watermark || {})
+          }
         };
         setTemplate({ ...JSON.parse(JSON.stringify(existing)), customization: hydratedCustomization });
       }
@@ -678,6 +693,155 @@ const CreateTemplateScreen = ({ saveTemplate, navigate, templates, editTemplateI
       ...template,
       customization: { ...template.customization, [field]: value }
     });
+  };
+
+  // --- TEMPLATE IMAGES ACTIONS ---
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      showToast("Only PNG, JPG/JPEG, and WebP images are supported.", "error");
+      e.target.value = '';
+      return;
+    }
+
+    const MAX_SIZE = 2 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      showToast("Image file size exceeds the 2MB limit. Please upload a smaller file.", "error");
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (loadEvt) => {
+      const applyImage = (dataUrl) => {
+        const newImg = {
+          id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(),
+          name: file.name,
+          data: dataUrl,
+          width: 120,
+          height: 60,
+          position: 'top-left',
+          xOffset: 0,
+          yOffset: 0,
+          pageScope: 'all',
+          selectedPages: [1]
+        };
+        const currentImages = Array.isArray(template.customization?.images) ? template.customization.images : [];
+        updateCustomization('images', [...currentImages, newImg]);
+        showToast(`Image "${file.name}" added successfully.`, "success");
+        e.target.value = '';
+      };
+
+      if (file.type === 'image/webp') {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 300;
+          canvas.height = img.naturalHeight || 150;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          applyImage(canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => applyImage(loadEvt.target.result);
+        img.src = loadEvt.target.result;
+      } else {
+        applyImage(loadEvt.target.result);
+      }
+    };
+    reader.onerror = () => {
+      showToast("Failed to read image file.", "error");
+      e.target.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const updateImage = (id, field, value) => {
+    const images = Array.isArray(template.customization?.images) ? template.customization.images : [];
+    const updated = images.map(img => img.id === id ? { ...img, [field]: value } : img);
+    updateCustomization('images', updated);
+  };
+
+  const removeImage = (id) => {
+    const images = Array.isArray(template.customization?.images) ? template.customization.images : [];
+    const updated = images.filter(img => img.id !== id);
+    updateCustomization('images', updated);
+    showToast("Template image removed.", "info");
+  };
+
+  // --- DOCUMENT WATERMARK ACTIONS ---
+  const handleWatermarkUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      showToast("Only PNG, JPG/JPEG, and WebP images are supported for watermark.", "error");
+      e.target.value = '';
+      return;
+    }
+
+    const MAX_SIZE = 2 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      showToast("Watermark image size exceeds the 2MB limit.", "error");
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (loadEvt) => {
+      const applyWm = (dataUrl) => {
+        const currentWm = template.customization?.watermark || {};
+        updateCustomization('watermark', {
+          ...currentWm,
+          enabled: true,
+          data: dataUrl,
+          name: file.name,
+          width: currentWm.width || 350,
+          height: currentWm.height || 350,
+          opacity: currentWm.opacity !== undefined ? currentWm.opacity : 0.15,
+          position: 'center'
+        });
+        showToast(`Watermark "${file.name}" loaded successfully.`, "success");
+        e.target.value = '';
+      };
+
+      if (file.type === 'image/webp') {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 350;
+          canvas.height = img.naturalHeight || 350;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          applyWm(canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => applyWm(loadEvt.target.result);
+        img.src = loadEvt.target.result;
+      } else {
+        applyWm(loadEvt.target.result);
+      }
+    };
+    reader.onerror = () => {
+      showToast("Failed to read watermark file.", "error");
+      e.target.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const updateWatermark = (field, value) => {
+    const currentWm = template.customization?.watermark || {
+      enabled: false, data: '', name: '', width: 350, height: 350, opacity: 0.15, position: 'center'
+    };
+    updateCustomization('watermark', { ...currentWm, [field]: value });
+  };
+
+  const removeWatermarkImage = () => {
+    const currentWm = template.customization?.watermark || {};
+    updateCustomization('watermark', { ...currentWm, data: '', name: '', enabled: false });
+    showToast("Watermark image removed.", "info");
   };
 
   const confirmDeleteSection = (id) => {
@@ -819,6 +983,289 @@ const CreateTemplateScreen = ({ saveTemplate, navigate, templates, editTemplateI
                    <div className="form-group" style={{marginBottom: 0, flex: 1}}><label>Background Color</label><input type="color" className="form-control" style={{padding: '0.2rem', height: '40px', cursor: 'pointer'}} value={template.customization.bgColor} onChange={e => updateCustomization('bgColor', e.target.value)} /></div>
                    <div className="form-group" style={{marginBottom: 0, flex: 1}}><label>Text Color</label><input type="color" className="form-control" style={{padding: '0.2rem', height: '40px', cursor: 'pointer'}} value={template.customization.textColor} onChange={e => updateCustomization('textColor', e.target.value)} /></div>
                 </div>
+              </div>
+
+              {/* ==========================================
+                  SECTION: TEMPLATE IMAGES
+                  ========================================== */}
+              <div className="customization-section">
+                <div className="customization-section-title">
+                  <div>
+                    <h4>Template Images</h4>
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>
+                      Add logos, headers, or signatures. Supports PNG, JPG, and WebP (max 2MB per file).
+                    </p>
+                  </div>
+                  <label className="btn-outline" style={{ cursor: 'pointer' }}>
+                    <Plus size={16} /> ADD IMAGE
+                    <input 
+                      type="file" 
+                      accept="image/png, image/jpeg, image/jpg, image/webp" 
+                      style={{ display: 'none' }} 
+                      onChange={handleImageUpload} 
+                    />
+                  </label>
+                </div>
+
+                {(!template.customization?.images || template.customization.images.length === 0) ? (
+                  <label className="upload-dropzone">
+                    <Upload size={28} color="#6366f1" />
+                    <span style={{ fontWeight: 600, color: '#374151' }}>Upload Template Image</span>
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>PNG, JPG/JPEG, or WebP (max 2MB)</span>
+                    <input type="file" accept="image/png, image/jpeg, image/jpg, image/webp" style={{ display: 'none' }} onChange={handleImageUpload} />
+                  </label>
+                ) : (
+                  <div>
+                    {template.customization.images.map((img, idx) => (
+                      <div key={img.id || idx} className="image-item-card">
+                        <div className="image-item-header">
+                          <div className="image-item-meta">
+                            <div className="image-thumbnail-box">
+                              <img src={img.data} alt={img.name} />
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.95rem' }}>{img.name}</div>
+                              <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '2px' }}>
+                                Position: <strong>{img.position || 'top-left'}</strong> • Scope: <strong>{img.pageScope === 'specific' ? `Specific Pages [${(img.selectedPages || [1]).join(', ')}]` : 'All Pages'}</strong>
+                              </div>
+                            </div>
+                          </div>
+                          <button 
+                            className="btn-outline" 
+                            style={{ border: 'none', color: '#ef4444', padding: '0.4rem' }} 
+                            onClick={() => removeImage(img.id)}
+                            title="Remove image"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', alignItems: 'end' }}>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Width (pt)</label>
+                            <input 
+                              type="number" 
+                              className="form-control" 
+                              value={img.width ?? 120} 
+                              onChange={e => updateImage(img.id, 'width', parseInt(e.target.value, 10) || 0)} 
+                              min="10" 
+                              max="600" 
+                            />
+                          </div>
+
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Height (pt)</label>
+                            <input 
+                              type="number" 
+                              className="form-control" 
+                              value={img.height ?? 60} 
+                              onChange={e => updateImage(img.id, 'height', parseInt(e.target.value, 10) || 0)} 
+                              min="10" 
+                              max="600" 
+                            />
+                          </div>
+
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Position</label>
+                            <select 
+                              className="form-control" 
+                              value={img.position || 'top-left'} 
+                              onChange={e => updateImage(img.id, 'position', e.target.value)}
+                            >
+                              <option value="top-left">Top Left</option>
+                              <option value="top-center">Top Center</option>
+                              <option value="top-right">Top Right</option>
+                              <option value="center">Center</option>
+                              <option value="bottom-left">Bottom Left</option>
+                              <option value="bottom-center">Bottom Center</option>
+                              <option value="bottom-right">Bottom Right</option>
+                              <option value="custom">Custom</option>
+                            </select>
+                          </div>
+
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Page Scope</label>
+                            <select 
+                              className="form-control" 
+                              value={img.pageScope || 'all'} 
+                              onChange={e => updateImage(img.id, 'pageScope', e.target.value)}
+                            >
+                              <option value="all">All Pages (Repeats on every page)</option>
+                              <option value="specific">Specific Pages (Content-Anchored)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {img.position === 'custom' && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', padding: '0.75rem', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label>X Offset (pt)</label>
+                              <input 
+                                type="number" 
+                                className="form-control" 
+                                value={img.xOffset ?? 0} 
+                                onChange={e => updateImage(img.id, 'xOffset', parseInt(e.target.value, 10) || 0)} 
+                              />
+                            </div>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label>Y Offset (pt)</label>
+                              <input 
+                                type="number" 
+                                className="form-control" 
+                                value={img.yOffset ?? 0} 
+                                onChange={e => updateImage(img.id, 'yOffset', parseInt(e.target.value, 10) || 0)} 
+                              />
+                            </div>
+                            <span style={{ gridColumn: 'span 2', fontSize: '0.75rem', color: '#6b7280' }}>
+                              Coordinates in points from top-left of page (72 pt = 1 inch). Standard page size is 612 × 792 pt.
+                            </span>
+                          </div>
+                        )}
+
+                        {img.pageScope === 'specific' && (
+                          <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                            <div className="form-group" style={{ marginBottom: '0.25rem' }}>
+                              <label>Target Pages (1-based, comma separated)</label>
+                              <input 
+                                type="text" 
+                                className="form-control" 
+                                value={img.selectedPagesText !== undefined ? img.selectedPagesText : (img.selectedPages || [1]).join(', ')} 
+                                onChange={e => {
+                                  const text = e.target.value;
+                                  const nums = text.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+                                  const images = Array.isArray(template.customization?.images) ? template.customization.images : [];
+                                  const updated = images.map(item => item.id === img.id ? { ...item, selectedPagesText: text, selectedPages: nums.length > 0 ? nums : [1] } : item);
+                                  updateCustomization('images', updated);
+                                }}
+                                placeholder="e.g., 1, 3, 5" 
+                              />
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                              Content-Anchored Scope: In Word (DOCX), page pagination is calculated dynamically at render time. Specific page images anchor to the corresponding document section content (Page 1 anchors to document start; Page N anchors to Section N heading) without altering natural document flow.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    <label className="btn-outline" style={{ display: 'inline-flex', cursor: 'pointer', marginTop: '0.5rem' }}>
+                      <Plus size={16} /> Add Another Image
+                      <input 
+                        type="file" 
+                        accept="image/png, image/jpeg, image/jpg, image/webp" 
+                        style={{ display: 'none' }} 
+                        onChange={handleImageUpload} 
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* ==========================================
+                  SECTION: DOCUMENT WATERMARK (Completely Separate)
+                  ========================================== */}
+              <div className="customization-section">
+                <div className="customization-section-title">
+                  <div>
+                    <h4>Document Watermark</h4>
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#6b7280' }}>
+                      Render a centered background watermark strictly behind all document content, text, and tables.
+                    </p>
+                  </div>
+                  <label className="switch-label">
+                    <input 
+                      type="checkbox" 
+                      checked={!!template.customization?.watermark?.enabled} 
+                      onChange={e => updateWatermark('enabled', e.target.checked)} 
+                    />
+                    <span>{template.customization?.watermark?.enabled ? 'Watermark Enabled' : 'Watermark Disabled'}</span>
+                  </label>
+                </div>
+
+                {template.customization?.watermark?.enabled && (
+                  <div style={{ marginTop: '1rem' }}>
+                    {!template.customization?.watermark?.data ? (
+                      <label className="upload-dropzone">
+                        <Upload size={28} color="#6366f1" />
+                        <span style={{ fontWeight: 600, color: '#374151' }}>Upload Watermark Image</span>
+                        <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>PNG, JPG/JPEG, or WebP (max 2MB)</span>
+                        <input type="file" accept="image/png, image/jpeg, image/jpg, image/webp" style={{ display: 'none' }} onChange={handleWatermarkUpload} />
+                      </label>
+                    ) : (
+                      <div className="image-item-card" style={{ background: '#fcfcfd' }}>
+                        <div className="image-item-header">
+                          <div className="image-item-meta">
+                            <div className="image-thumbnail-box" style={{ background: '#f1f5f9' }}>
+                              <img src={template.customization.watermark.data} alt="Watermark" style={{ opacity: template.customization.watermark.opacity || 0.15 }} />
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.95rem' }}>
+                                {template.customization.watermark.name || "Watermark Image"}
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '2px' }}>
+                                Centered behind all document text and tables
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <label className="btn-outline" style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                              <Upload size={14} /> Replace
+                              <input type="file" accept="image/png, image/jpeg, image/jpg, image/webp" style={{ display: 'none' }} onChange={handleWatermarkUpload} />
+                            </label>
+                            <button className="btn-outline" style={{ border: 'none', color: '#ef4444', padding: '0.4rem' }} onClick={removeWatermarkImage} title="Remove watermark image">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', alignItems: 'end' }}>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Width (pt)</label>
+                            <input 
+                              type="number" 
+                              className="form-control" 
+                              value={template.customization.watermark.width ?? 350} 
+                              onChange={e => updateWatermark('width', parseInt(e.target.value, 10) || 0)} 
+                              min="20" 
+                              max="600" 
+                            />
+                          </div>
+
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label>Height (pt)</label>
+                            <input 
+                              type="number" 
+                              className="form-control" 
+                              value={template.customization.watermark.height ?? 350} 
+                              onChange={e => updateWatermark('height', parseInt(e.target.value, 10) || 0)} 
+                              min="20" 
+                              max="600" 
+                            />
+                          </div>
+
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <label>Opacity</label>
+                              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary)' }}>
+                                {Math.round((template.customization.watermark.opacity !== undefined ? template.customization.watermark.opacity : 0.15) * 100)}%
+                              </span>
+                            </div>
+                            <input 
+                              type="range" 
+                              className="form-control" 
+                              style={{ padding: '0.2rem', cursor: 'pointer' }}
+                              min="0.05" 
+                              max="1.0" 
+                              step="0.05" 
+                              value={template.customization.watermark.opacity !== undefined ? template.customization.watermark.opacity : 0.15} 
+                              onChange={e => updateWatermark('opacity', parseFloat(e.target.value))} 
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -968,15 +1415,36 @@ const DocumentViewScreen = ({ doc, navigate, editDocument, exportDocument, showT
         </div>
       </div>
 
-      <div className="doc-viewer-content" style={custStyle}>
-        {doc.sections && doc.sections.map((sec, idx) => (
-          <div key={idx} style={{ marginBottom: '2.5rem' }}>
-            <h2 style={{ borderBottom: `1px solid ${doc.customization?.textColor || '#000000'}`, paddingBottom: '0.5rem', opacity: 0.8 }}>{idx + 1}. {sec.heading}</h2>
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-              {(sec.content || "").replace(/\{\{NUM\}\}/g, idx + 1)}
-            </ReactMarkdown>
-          </div>
-        ))}
+      <div className="doc-viewer-content" style={{ ...custStyle, position: 'relative', overflow: 'hidden' }}>
+        {doc.customization?.watermark?.enabled && doc.customization?.watermark?.data && (
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: `${doc.customization.watermark.width || 350}px`,
+            maxWidth: '85%',
+            height: `${doc.customization.watermark.height || 350}px`,
+            maxHeight: '85%',
+            opacity: doc.customization.watermark.opacity !== undefined ? doc.customization.watermark.opacity : 0.15,
+            backgroundImage: `url(${doc.customization.watermark.data})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            backgroundSize: 'contain',
+            pointerEvents: 'none',
+            zIndex: 0
+          }} />
+        )}
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {doc.sections && doc.sections.map((sec, idx) => (
+            <div key={idx} style={{ marginBottom: '2.5rem' }}>
+              <h2 style={{ borderBottom: `1px solid ${doc.customization?.textColor || '#000000'}`, paddingBottom: '0.5rem', opacity: 0.8 }}>{idx + 1}. {sec.heading}</h2>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                {(sec.content || "").replace(/\{\{NUM\}\}/g, idx + 1)}
+              </ReactMarkdown>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1209,16 +1677,106 @@ const GenerateDocumentScreen = ({ templates, editDoc, saveDocument, exportDocume
               </div>
 
               <div className="pane">
-                <div className="pane-header">Live Render Preview</div>
+                <div className="pane-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Live Render Preview</span>
+                  {templateObj?.customization?.watermark?.enabled && templateObj?.customization?.watermark?.data && (
+                    <span className="badge-pill" style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
+                      Watermark Active ({Math.round((templateObj.customization.watermark.opacity !== undefined ? templateObj.customization.watermark.opacity : 0.15) * 100)}%)
+                    </span>
+                  )}
+                </div>
+
+                {templateObj?.customization?.images && templateObj.customization.images.length > 0 && (
+                  <div style={{ padding: '0.4rem 0.8rem', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    {templateObj.customization.images.map((img, i) => {
+                      const applies = (!img.pageScope || img.pageScope === 'all') || 
+                        (Array.isArray(img.selectedPages) && (img.selectedPages.includes(activeIndex + 1) || img.selectedPages.includes(String(activeIndex + 1))));
+                      return (
+                        <span key={img.id || i} className="badge-pill" style={{ 
+                          background: applies ? '#eef2ff' : '#f3f4f6', 
+                          color: applies ? '#4f46e5' : '#9ca3af',
+                          border: applies ? '1px solid #c7d2fe' : '1px solid #e5e7eb',
+                          fontSize: '0.7rem'
+                        }}>
+                          {img.name || `Image ${i+1}`} ({img.position || 'top-left'}, {img.width || 120}×{img.height || 60}pt) {applies ? '• Page Active' : '• Other Pages'}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <div style={{ flex: 1, overflowY: 'auto' }}>
-                  <div style={custStyle}>
-                    {activeData.content ? (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                        {activeData.content.replace(/\{\{NUM\}\}/g, activeIndex + 1)}
-                      </ReactMarkdown>
-                    ) : (
-                      <div style={{ opacity: 0.5, fontStyle: 'italic' }}>Preview will appear here...</div>
+                  <div style={{ ...custStyle, position: 'relative', overflow: 'hidden' }}>
+                    {/* Watermark preview behind content */}
+                    {templateObj?.customization?.watermark?.enabled && templateObj?.customization?.watermark?.data && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: `${templateObj.customization.watermark.width || 350}px`,
+                        maxWidth: '85%',
+                        height: `${templateObj.customization.watermark.height || 350}px`,
+                        maxHeight: '85%',
+                        opacity: templateObj.customization.watermark.opacity !== undefined ? templateObj.customization.watermark.opacity : 0.15,
+                        backgroundImage: `url(${templateObj.customization.watermark.data})`,
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: 'center',
+                        backgroundSize: 'contain',
+                        pointerEvents: 'none',
+                        zIndex: 0
+                      }} />
                     )}
+
+                    {/* Positioned images preview */}
+                    {templateObj?.customization?.images && templateObj.customization.images
+                      .filter(img => img && img.data && (
+                        (!img.pageScope || img.pageScope === 'all') || 
+                        (Array.isArray(img.selectedPages) && (img.selectedPages.includes(activeIndex + 1) || img.selectedPages.includes(String(activeIndex + 1))))
+                      ))
+                      .map((img, i) => {
+                        const pos = (img.position || 'top-left').toLowerCase();
+                        let posStyle = {};
+                        if (pos === 'top-left') posStyle = { top: '12px', left: '12px' };
+                        else if (pos === 'top-center') posStyle = { top: '12px', left: '50%', transform: 'translateX(-50%)' };
+                        else if (pos === 'top-right') posStyle = { top: '12px', right: '12px' };
+                        else if (pos === 'center') posStyle = { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+                        else if (pos === 'bottom-left') posStyle = { bottom: '12px', left: '12px' };
+                        else if (pos === 'bottom-center') posStyle = { bottom: '12px', left: '50%', transform: 'translateX(-50%)' };
+                        else if (pos === 'bottom-right') posStyle = { bottom: '12px', right: '12px' };
+                        else if (pos === 'custom') posStyle = { top: `${(img.yOffset || 0) * 0.75}px`, left: `${(img.xOffset || 0) * 0.75}px` };
+                        else posStyle = { top: '12px', left: '12px' };
+
+                        return (
+                          <img 
+                            key={img.id || i}
+                            src={img.data}
+                            alt={img.name}
+                            style={{
+                              position: 'absolute',
+                              ...posStyle,
+                              width: `${(img.width || 120) * 0.75}px`,
+                              height: `${(img.height || 60) * 0.75}px`,
+                              objectFit: 'contain',
+                              zIndex: 1,
+                              pointerEvents: 'none',
+                              opacity: 0.9,
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                            }}
+                          />
+                        );
+                      })
+                    }
+
+                    <div style={{ position: 'relative', zIndex: 2 }}>
+                      {activeData.content ? (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                          {activeData.content.replace(/\{\{NUM\}\}/g, activeIndex + 1)}
+                        </ReactMarkdown>
+                      ) : (
+                        <div style={{ opacity: 0.5, fontStyle: 'italic' }}>Preview will appear here...</div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

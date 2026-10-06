@@ -17,6 +17,101 @@ const __dirname = path.dirname(__filename);
 // ==========================================
 const ptToTwip = (pt) => Math.round(pt * 20);
 const inchToEmu = (inch) => Math.round(inch * 914400);
+const ptToEmu = (pt) => Math.round(pt * 12700);
+
+// Parse Base64 Data URL or raw base64 to Buffer safely
+function bufferFromDataUrl(dataString) {
+    if (!dataString || typeof dataString !== 'string') return null;
+    try {
+        const base64Index = dataString.indexOf(';base64,');
+        if (base64Index !== -1) {
+            return Buffer.from(dataString.substring(base64Index + 8), 'base64');
+        }
+        return Buffer.from(dataString, 'base64');
+    } catch (e) {
+        console.warn("[WARNING] Failed to parse image data buffer:", e);
+        return null;
+    }
+}
+
+// Validate PNG and JPEG image buffers to prevent corrupt/unsupported images from crashing PDFKit/Docx
+function isValidPdfImageData(dataString) {
+    if (!dataString || typeof dataString !== 'string') return false;
+    try {
+        const buf = bufferFromDataUrl(dataString);
+        if (!buf || buf.length < 4) return false;
+        // PNG signature: 89 50 4E 47
+        const isPng = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
+        // JPEG signature: FF D8 FF
+        const isJpeg = buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
+        return isPng || isJpeg;
+    } catch {
+        return false;
+    }
+}
+
+// Calculate standard page coordinates (612 x 792 pt Letter size for DOCX, 595.28 x 841.89 pt A4 for PDF)
+export function calculateImageOffsets(img, widthPt, heightPt, cust, pageWidth = 612, pageHeight = 792) {
+    const mTop = parseInt(cust?.marginTop, 10) || 72;
+    const mBottom = parseInt(cust?.marginBottom, 10) || 72;
+    const mLeft = parseInt(cust?.marginLeft, 10) || 72;
+    const mRight = parseInt(cust?.marginRight, 10) || 72;
+
+    const pos = (img?.position || 'top-left').toLowerCase();
+    const xUser = parseInt(img?.xOffset, 10) || 0;
+    const yUser = parseInt(img?.yOffset, 10) || 0;
+
+    let x = mLeft;
+    let y = mTop;
+
+    switch (pos) {
+        case 'top-left':
+            x = mLeft + xUser;
+            y = mTop + yUser;
+            break;
+        case 'top-center':
+            x = Math.round((pageWidth - widthPt) / 2) + xUser;
+            y = mTop + yUser;
+            break;
+        case 'top-right':
+            x = pageWidth - mRight - widthPt + xUser;
+            y = mTop + yUser;
+            break;
+        case 'center':
+            x = Math.round((pageWidth - widthPt) / 2) + xUser;
+            y = Math.round((pageHeight - heightPt) / 2) + yUser;
+            break;
+        case 'bottom-left':
+            x = mLeft + xUser;
+            y = pageHeight - mBottom - heightPt + yUser;
+            break;
+        case 'bottom-center':
+            x = Math.round((pageWidth - widthPt) / 2) + xUser;
+            y = pageHeight - mBottom - heightPt + yUser;
+            break;
+        case 'bottom-right':
+            x = pageWidth - mRight - widthPt + xUser;
+            y = pageHeight - mBottom - heightPt + yUser;
+            break;
+        case 'custom':
+            x = (img?.xOffset !== undefined ? parseInt(img.xOffset, 10) || 0 : mLeft);
+            y = (img?.yOffset !== undefined ? parseInt(img.yOffset, 10) || 0 : mTop);
+            break;
+        default:
+            x = mLeft + xUser;
+            y = mTop + yUser;
+    }
+
+    x = Math.max(0, Math.min(pageWidth - 20, x));
+    y = Math.max(0, Math.min(pageHeight - 20, y));
+
+    return {
+        xPt: x,
+        yPt: y,
+        xOffsetEMU: ptToEmu(x),
+        yOffsetEMU: ptToEmu(y)
+    };
+}
 
 // Bulletproof Vercel Path Resolution (Case-Insensitive Scanner)
 function getAssetPath(filename) {
@@ -194,63 +289,59 @@ function parseMarkdownToPdf(markdownText, cust, baseFontSize) {
 // ==========================================
 // 1. DOCX GENERATOR (Pure Node.js)
 // ==========================================
-export async function generateDocx(title, sections, cust) {
+export async function generateDocx(title, sections, cust = {}) {
     const docChildren = [];
     const font = cust.font || "Arial";
     const baseFontSize = parseInt(cust.size, 10) || 12;
     const textColor = hexStrip(cust.textColor);
 
-    // --- FULL BLEED TOP BANNER ---
-    const topImageBuffer = getAssetBuffer('top.png');
-    let imgHeightPt = 0;
-    if (topImageBuffer) {
-        const dims = getPngDimensions(topImageBuffer);
-        const aspect = dims ? dims.height / dims.width : 0.15;
-        const imgHeightIn = 8.5 * aspect;
-        imgHeightPt = imgHeightIn * 72;
-        
-        docChildren.push(new Paragraph({
-            spacing: { before: 0, after: 0 },
-            children: [
-                new ImageRun({
-                    data: topImageBuffer,
-                    type: 'png',
-                    transformation: { width: Math.round(8.5 * 96), height: Math.round(imgHeightIn * 96) },
-                    floating: {
-                        horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 },
-                        verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: 0 },
-                        wrap: { type: TextWrappingType.NONE },
-                        behindDocument: true
-                    }
-                })
-            ]
-        }));
-    }
-
-    // --- ADDRESS BLOCK & DIVIDER ---
-    const topMarginPt = parseInt(cust.marginTop, 10) || 72;
-    const addressSpace = Math.max(0, imgHeightPt - topMarginPt + 4);
-
+    // --- TITLE ---
     docChildren.push(new Paragraph({
         alignment: AlignmentType.CENTER,
-        spacing: { before: ptToTwip(addressSpace), after: ptToTwip(4) },
-        children: [
-            new TextRun({ text: "OFFICE NO. 12, 2ND FLOOR, NO.40 DLF INDUSTRIAL AREA, KIRTI NAGAR, DELHI 110015.", bold: true, size: 9 * 2, font: font, color: textColor }),
-            new TextRun({ text: "Contact No. : ", bold: true, size: 9 * 2, font: font, color: textColor, break: 1 }),
-            new TextRun({ text: "+91 99871 59986", bold: true, size: 9 * 2, font: font, color: "2563eb" }),
-            new TextRun({ text: " | Email : ", bold: true, size: 9 * 2, font: font, color: textColor }),
-            new TextRun({ text: "info@sgwebapp.com", bold: true, size: 9 * 2, font: font, color: "2563eb" }),
-            new TextRun({ text: " | Website : ", bold: true, size: 9 * 2, font: font, color: textColor }),
-            new TextRun({ text: "www.sgwebapp.com", bold: true, size: 9 * 2, font: font, color: "2563eb" })
-        ]
+        spacing: { before: ptToTwip(12), after: ptToTwip(24) },
+        children: [new TextRun({ text: (title || "DOCUMENT").toUpperCase(), bold: true, size: (baseFontSize + 4) * 2, font: font, color: textColor })]
     }));
 
-    // Full Bleed Divider
-    docChildren.push(new Paragraph({
-        indent: { left: -ptToTwip(cust.marginLeft || 72), right: -ptToTwip(cust.marginRight || 72) },
-        spacing: { before: ptToTwip(4), after: ptToTwip(4) },
-        border: { bottom: { color: "000000", space: 1, style: BorderStyle.SINGLE, size: 16 } }
-    }));
+    // --- SPECIFIC-PAGE USER IMAGES (Anchored to body paragraphs) ---
+    const userImages = Array.isArray(cust.images) ? cust.images : [];
+    const specificPageImages = userImages.filter(img => img && img.data && img.pageScope === 'specific');
+
+    // Page 1 specific images anchored to the top of body
+    const page1Images = specificPageImages.filter(img => {
+        const pages = Array.isArray(img.selectedPages) ? img.selectedPages : [1];
+        return pages.includes(1) || pages.includes('1');
+    });
+
+    const page1ImageRuns = [];
+    for (const img of page1Images) {
+        const imgBuffer = bufferFromDataUrl(img.data);
+        if (imgBuffer && isValidPdfImageData(img.data)) {
+            const width = parseInt(img.width, 10) || 120;
+            const height = parseInt(img.height, 10) || 60;
+            const coords = calculateImageOffsets(img, width, height, cust);
+
+            page1ImageRuns.push(new ImageRun({
+                data: imgBuffer,
+                transformation: {
+                    width: Math.round(width * (96 / 72)),
+                    height: Math.round(height * (96 / 72))
+                },
+                floating: {
+                    horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: coords.xOffsetEMU },
+                    verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: coords.yOffsetEMU },
+                    wrap: { type: TextWrappingType.NONE },
+                    behindDocument: false
+                }
+            }));
+        }
+    }
+
+    if (page1ImageRuns.length > 0) {
+        docChildren.unshift(new Paragraph({
+            spacing: { before: 0, after: 0 },
+            children: page1ImageRuns
+        }));
+    }
 
     // --- TITLE ---
     docChildren.push(new Paragraph({
@@ -261,39 +352,48 @@ export async function generateDocx(title, sections, cust) {
 
     // --- SECTIONS ---
     sections.forEach((sec, idx) => {
+        const secChildren = [new TextRun({ text: `${idx + 1}. ${sec.heading}`, bold: true, size: (baseFontSize + 2) * 2, font: font, color: textColor })];
+
+        // Specific-page images targeting section (1-based index)
+        const targetPage = idx + 1;
+        if (targetPage > 1) {
+            const pageImages = specificPageImages.filter(img => {
+                const pages = Array.isArray(img.selectedPages) ? img.selectedPages : [];
+                return pages.includes(targetPage) || pages.includes(String(targetPage));
+            });
+            for (const img of pageImages) {
+                const imgBuffer = bufferFromDataUrl(img.data);
+                if (imgBuffer && isValidPdfImageData(img.data)) {
+                    const width = parseInt(img.width, 10) || 120;
+                    const height = parseInt(img.height, 10) || 60;
+                    const coords = calculateImageOffsets(img, width, height, cust);
+                    secChildren.push(new ImageRun({
+                        data: imgBuffer,
+                        transformation: {
+                            width: Math.round(width * (96 / 72)),
+                            height: Math.round(height * (96 / 72))
+                        },
+                        floating: {
+                            horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: coords.xOffsetEMU },
+                            verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: coords.yOffsetEMU },
+                            wrap: { type: TextWrappingType.NONE },
+                            behindDocument: false
+                        }
+                    }));
+                }
+            }
+        }
+
         docChildren.push(new Paragraph({
             spacing: { before: idx > 0 ? ptToTwip(18) : ptToTwip(4), after: ptToTwip(6) },
-            children: [new TextRun({ text: `${idx + 1}. ${sec.heading}`, bold: true, size: (baseFontSize + 2) * 2, font: font, color: textColor })]
+            children: secChildren
         }));
         if (sec.content) {
             docChildren.push(...parseMarkdownToDocx(sec.content, cust, baseFontSize));
         }
     });
 
-    // --- STAMP IMAGE ---
-    const stampBuffer = getAssetBuffer('stamp.png');
-    if (stampBuffer) {
-        const sDims = getPngDimensions(stampBuffer);
-        const sAspect = sDims ? sDims.height / sDims.width : 1;
-        const stampW = Math.round(1.8 * 96);
-
-        docChildren.push(new Paragraph({
-            spacing: { before: ptToTwip(4), after: ptToTwip(4) },
-            border: { bottom: { color: "000000", space: 1, style: BorderStyle.SINGLE, size: 4 } }
-        }));
-        docChildren.push(new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            children: [
-                new ImageRun({ 
-                    data: stampBuffer, 
-                    type: 'png',
-                    transformation: { width: stampW, height: Math.round(stampW * sAspect) }
-                })
-            ]
-        }));
-    }
-
-    // --- HEADER / WATERMARK ---
+    // --- HEADER: WATERMARK & ALL-PAGES IMAGES ---
     const headerChildren = [];
     if (cust.header) {
         headerChildren.push(new Paragraph({
@@ -302,23 +402,61 @@ export async function generateDocx(title, sections, cust) {
         }));
     }
 
-    const watermarkBuffer = getAssetBuffer('watermark.png');
-    if (watermarkBuffer) {
-        headerChildren.push(new Paragraph({
-            children: [
-                new ImageRun({
-                    data: watermarkBuffer,
-                    type: 'png',
-                    transformation: { width: 6 * 96, height: 6 * 96 },
-                    floating: {
-                        horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: inchToEmu(1.25) },
-                        verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: inchToEmu(3.5) },
-                        wrap: { type: TextWrappingType.NONE },
-                        behindDocument: true
-                    }
-                })
-            ]
-        }));
+    // 1. Separate Watermark: Behind all document content
+    if (cust.watermark && cust.watermark.enabled && cust.watermark.data && isValidPdfImageData(cust.watermark.data)) {
+        const watermarkBuffer = bufferFromDataUrl(cust.watermark.data);
+        if (watermarkBuffer) {
+            const wmWidth = parseInt(cust.watermark.width, 10) || 350;
+            const wmHeight = parseInt(cust.watermark.height, 10) || 350;
+            const wmCoords = calculateImageOffsets(cust.watermark, wmWidth, wmHeight, cust);
+
+            headerChildren.push(new Paragraph({
+                children: [
+                    new ImageRun({
+                        data: watermarkBuffer,
+                        transformation: {
+                            width: Math.round(wmWidth * (96 / 72)),
+                            height: Math.round(wmHeight * (96 / 72))
+                        },
+                        floating: {
+                            horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: wmCoords.xOffsetEMU },
+                            verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: wmCoords.yOffsetEMU },
+                            wrap: { type: TextWrappingType.NONE },
+                            behindDocument: true
+                        }
+                    })
+                ]
+            }));
+        }
+    }
+
+    // 2. Normal User Images (All Pages Scope: placed in header, behindDocument: false)
+    const allPagesImages = userImages.filter(img => img && img.data && (!img.pageScope || img.pageScope === 'all'));
+    for (const img of allPagesImages) {
+        const imgBuffer = bufferFromDataUrl(img.data);
+        if (imgBuffer && isValidPdfImageData(img.data)) {
+            const width = parseInt(img.width, 10) || 120;
+            const height = parseInt(img.height, 10) || 60;
+            const coords = calculateImageOffsets(img, width, height, cust);
+
+            headerChildren.push(new Paragraph({
+                children: [
+                    new ImageRun({
+                        data: imgBuffer,
+                        transformation: {
+                            width: Math.round(width * (96 / 72)),
+                            height: Math.round(height * (96 / 72))
+                        },
+                        floating: {
+                            horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: coords.xOffsetEMU },
+                            verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: coords.yOffsetEMU },
+                            wrap: { type: TextWrappingType.NONE },
+                            behindDocument: false
+                        }
+                    })
+                ]
+            }));
+        }
     }
 
     // --- FOOTER ---
@@ -382,35 +520,13 @@ export async function generateDocx(title, sections, cust) {
 // ==========================================
 // 2. PDF GENERATOR (Node.js fallback for Vercel)
 // ==========================================
-export async function generatePdf(title, sections, cust) {
+export async function generatePdf(title, sections, cust = {}) {
     return new Promise((resolve, reject) => {
         const content = [];
         const baseFontSize = parseInt(cust.size, 10) || 12;
         const footerFontSize = (baseFontSize - 2 > 0) ? baseFontSize - 2 : 10;
-        
-        let imgHeightPt = 0;
-        const topBannerBase64 = getAssetBase64('top.png');
-        if (topBannerBase64) {
-            const buffer = getAssetBuffer('top.png');
-            const dims = getPngDimensions(buffer);
-            const aspect = dims ? dims.height / dims.width : 0.15;
-            imgHeightPt = 8.5 * aspect * 72;
-        }
 
-        const topMargin = parseInt(cust.marginTop, 10) || 72;
-        const addressSpace = Math.max(0, imgHeightPt - topMargin + 4);
-
-        content.push({
-            text: "OFFICE NO. 12, 2ND FLOOR, NO.40 DLF INDUSTRIAL AREA, KIRTI NAGAR, DELHI 110015.\nContact No. : +91 99871 59986 | Email : info@sgwebapp.com | Website : www.sgwebapp.com",
-            alignment: 'center', fontSize: 9, bold: true, margin: [0, addressSpace, 0, 4]
-        });
-
-        content.push({
-            canvas: [{ type: 'line', x1: -(cust.marginLeft || 72), y1: 0, x2: 595.28 - (cust.marginLeft || 72), y2: 0, lineWidth: 1.5 }],
-            margin: [0, 4, 0, 4]
-        });
-        
-        content.push({ text: title.toUpperCase(), alignment: 'center', fontSize: baseFontSize + 4, bold: true, margin: [0, 12, 0, 24] });
+        content.push({ text: (title || "DOCUMENT").toUpperCase(), alignment: 'center', fontSize: baseFontSize + 4, bold: true, margin: [0, 12, 0, 24] });
 
         sections.forEach((sec, idx) => {
             content.push({ text: `${idx + 1}. ${sec.heading}`, fontSize: baseFontSize + 2, bold: true, margin: [0, idx > 0 ? 18 : 4, 0, 6] });
@@ -419,16 +535,10 @@ export async function generatePdf(title, sections, cust) {
             }
         });
 
-        const stampBase64 = getAssetBase64('stamp.png');
-        if (stampBase64) {
-            content.push({
-                canvas: [{ type: 'line', x1: 0, y1: 0, x2: 595.28 - ((cust.marginLeft || 72) + (cust.marginRight || 72)), y2: 0, lineWidth: 0.5 }],
-                margin: [0, 4, 0, 4]
-            });
-            content.push({ image: stampBase64, width: 1.8 * 72, alignment: 'right', margin: [0, 4, 0, 0] });
-        }
-
-        const watermarkBase64 = getAssetBase64('watermark.png');
+        // A4 page dimensions in points (595.28 x 841.89)
+        const pdfPageWidth = 595.28;
+        const pdfPageHeight = 841.89;
+        const userImages = Array.isArray(cust?.images) ? cust.images : [];
 
         const docDefinition = {
             pageSize: 'A4',
@@ -439,20 +549,67 @@ export async function generatePdf(title, sections, cust) {
                     bg.push({
                         canvas: [{
                             type: 'rect',
-                            x: 0, y: 0, w: 595.28, h: 841.89,
+                            x: 0, y: 0, w: pdfPageWidth, h: pdfPageHeight,
                             color: cust.bgColor
                         }]
                     });
                 }
-                if (topBannerBase64 && currentPage === 1) {
-                    bg.push({ image: topBannerBase64, width: 595.28, absolutePosition: { x: 0, y: 0 } });
+
+                // User watermark in PDF (Layer 0: background layer strictly behind all document content, text, and normal images)
+                if (cust.watermark && cust.watermark.enabled && cust.watermark.data && isValidPdfImageData(cust.watermark.data)) {
+                    const wmWidth = parseInt(cust.watermark.width, 10) || 350;
+                    const wmHeight = parseInt(cust.watermark.height, 10) || 350;
+                    const wmX = Math.round((pdfPageWidth - wmWidth) / 2) + (parseInt(cust.watermark.xOffset, 10) || 0);
+                    const wmY = Math.round((pdfPageHeight - wmHeight) / 2) + (parseInt(cust.watermark.yOffset, 10) || 0);
+                    const wmSrc = cust.watermark.data.startsWith('data:') ? cust.watermark.data : bufferFromDataUrl(cust.watermark.data);
+                    bg.push({
+                        image: wmSrc,
+                        width: wmWidth,
+                        height: wmHeight,
+                        absolutePosition: { x: wmX, y: wmY },
+                        opacity: cust.watermark.opacity !== undefined ? parseFloat(cust.watermark.opacity) : 0.15
+                    });
                 }
-                if (watermarkBase64) {
-                    bg.push({ image: watermarkBase64, width: 6 * 72, absolutePosition: { x: 1.25 * 72, y: 3.5 * 72 }, opacity: 0.15 });
-                }
+
                 return bg;
             },
-            header: cust.header ? { text: cust.header, alignment: 'right', margin: [20, 20], color: '#888888', fontSize: footerFontSize } : undefined,
+            header: function(currentPage, pageCount) {
+                const headerElements = [];
+                if (cust.header) {
+                    headerElements.push({
+                        text: cust.header,
+                        alignment: 'right',
+                        margin: [20, 20],
+                        color: '#888888',
+                        fontSize: footerFontSize
+                    });
+                }
+
+                // Render normal user-added images on applicable pages
+                // In PDFMake, elements in header are drawn on layer 2 (above watermark layer 0 and content layer 1)
+                for (const img of userImages) {
+                    if (!img || !img.data || !isValidPdfImageData(img.data)) continue;
+
+                    const applies = (!img.pageScope || img.pageScope === 'all') ||
+                        (Array.isArray(img.selectedPages) && (img.selectedPages.includes(currentPage) || img.selectedPages.includes(String(currentPage))));
+
+                    if (applies) {
+                        const imgWidth = parseInt(img.width, 10) || 120;
+                        const imgHeight = parseInt(img.height, 10) || 60;
+                        const coords = calculateImageOffsets(img, imgWidth, imgHeight, cust, pdfPageWidth, pdfPageHeight);
+                        const imgSrc = img.data.startsWith('data:') ? img.data : bufferFromDataUrl(img.data);
+
+                        headerElements.push({
+                            image: imgSrc,
+                            width: imgWidth,
+                            height: imgHeight,
+                            absolutePosition: { x: coords.xPt, y: coords.yPt }
+                        });
+                    }
+                }
+
+                return headerElements;
+            },
             footer: function(currentPage, pageCount) {
                 const fText = cust.footer ? cust.footer.replace('[PAGE]', currentPage).replace('[TOTAL]', pageCount) : `PAGE ${currentPage}`;
                 return { text: fText, alignment: 'center', margin: [0, 20], color: '#888888', fontSize: footerFontSize };
@@ -522,14 +679,11 @@ export async function generatePdf(title, sections, cust) {
 // ==========================================
 // 3. MARKDOWN GENERATOR
 // ==========================================
-export async function generateMd(title, sections, cust) {
+export async function generateMd(title, sections, cust = {}) {
     let md = `<style>\nbody {\n  font-family: '${cust.font || 'Arial'}', sans-serif;\n  background-color: ${cust.bgColor || '#ffffff'};\n  color: ${cust.textColor || '#000000'};\n}\n</style>\n\n`;
     
     if (cust.header) md += `<div align='right'><b>${cust.header}</b></div>\n`;
-    md += `<div align='center'>\n<b>OFFICE NO. 12, 2ND FLOOR, NO.40 DLF INDUSTRIAL AREA, KIRTI NAGAR, DELHI 110015.</b><br>\n`;
-    md += `<b>Contact No. : +91 99871 59986 | Email : info@sgwebapp.com | Website : www.sgwebapp.com</b>\n</div>\n<hr>\n\n`;
-    
-    md += `<h1 align='center'>${title.toUpperCase()}</h1>\n\n`;
+    md += `<h1 align='center'>${(title || "DOCUMENT").toUpperCase()}</h1>\n\n`;
     sections.forEach((sec, i) => {
         md += `## ${i+1}. ${sec.heading}\n\n${sec.content || ''}\n\n`;
     });

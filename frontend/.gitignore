@@ -12,6 +12,20 @@ dist
 dist-ssr
 *.local
 
+# Environment files
+.env
+.env*.local
+.env.*
+!.env.example
+
+# Next.js build output
+.next/
+out/
+
+# Generated Document Exports
+*.docx
+*.pdf
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

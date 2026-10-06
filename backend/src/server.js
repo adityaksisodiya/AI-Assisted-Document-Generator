@@ -20,7 +20,24 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(cors());
+
+const allowedOrigins = process.env.FRONTEND_URL 
+    ? [process.env.FRONTEND_URL, 'http://localhost:3000', 'http://localhost:5173']
+    : ['http://localhost:3000', 'http://localhost:5173'];
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (process.env.NODE_ENV !== 'production') return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        if (process.env.FRONTEND_URL && origin.endsWith('.vercel.app') && process.env.FRONTEND_URL.includes('.vercel.app')) {
+            return callback(null, true);
+        }
+        return callback(new Error('CORS not allowed by server policy.'));
+    },
+    credentials: true
+}));
+
 app.use(express.json({ limit: '50mb' }));
 
 // ==========================================
@@ -143,7 +160,7 @@ app.post('/api/auth/register', async (req, res) => {
         });
         await newUser.save();
 
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
         const verifyUrl = `${frontendUrl}/?verifyToken=${verificationToken}`;
 
         if (!process.env.SMTP_USER) {
@@ -215,7 +232,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             { resetPasswordToken: resetToken, resetPasswordExpires: Date.now() + 15 * 60 * 1000 }
         );
 
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
         const resetUrl = `${frontendUrl}/?resetToken=${resetToken}`;
 
         if (!process.env.SMTP_USER) {
